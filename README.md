@@ -113,6 +113,10 @@ npm run dev
 # 3. Open http://localhost:3000 in your browser
 ```
 
+OR
+
+Use this URL - https://ai.studio/apps/309dfbd8-bcb3-4a2d-a8e6-37d8a3fe53c4?fullscreenApplet=true
+
 ---
 
 ## 📤 How to Push to GitHub
