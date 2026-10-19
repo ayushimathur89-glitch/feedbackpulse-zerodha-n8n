@@ -1,0 +1,6 @@
+{
+  "name": "FeedbackPulse AI — Review Intelligence & MCP Workflow",
+  "description": "AI-powered feedback intelligence workflow transforming raw customer reviews into Weekly Product Pulses and fee explainers with Model Context Protocol (MCP) approval gating, document logging, and email drafts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
