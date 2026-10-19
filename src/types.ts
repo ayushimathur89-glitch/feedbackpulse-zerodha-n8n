@@ -93,3 +93,43 @@ export interface EmailDraft {
   createdAt: string;
   status: 'DRAFT_CREATED' | 'SENT_SIMULATED';
 }
+
+export interface N8nNode {
+  id: string;
+  name: string;
+  type: string;
+  typeVersion?: number;
+  position: [number, number];
+  parameters?: Record<string, any>;
+  credentials?: Record<string, any>;
+  notesInFlow?: boolean;
+  notes?: string;
+  disabled?: boolean;
+}
+
+export interface N8nWorkflowData {
+  id?: string;
+  name: string;
+  active?: boolean;
+  nodes: N8nNode[];
+  connections: Record<string, {
+    main?: Array<Array<{
+      node: string;
+      type: string;
+      index: number;
+    }>>;
+  }>;
+  settings?: Record<string, any>;
+  meta?: Record<string, any>;
+  pinData?: Record<string, any>;
+}
+
+export interface N8nInstanceConfig {
+  host: string;
+  apiKey: string;
+  webhookUrl: string;
+  workflowId: string;
+  connected: boolean;
+  connectionType: 'api' | 'webhook' | 'json_file';
+  lastTestedAt?: string;
+}

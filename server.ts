@@ -444,6 +444,121 @@ app.get('/api/mcp/drafts', (_req, res) => {
   res.json({ drafts: mockEmailDrafts });
 });
 
+// API: Test connection to user's n8n instance
+app.post('/api/n8n/test-connection', async (req, res) => {
+  try {
+    const { host, apiKey } = req.body;
+    if (!host) {
+      return res.status(400).json({ error: 'Host URL is required (e.g., https://your-n8n.app.n8n.cloud or http://localhost:5678)' });
+    }
+
+    const cleanHost = host.trim().replace(/\/+$/, '');
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    
+    if (apiKey && apiKey.trim()) {
+      const cleanKey = apiKey.trim().replace(/^Bearer\s+/i, '');
+      headers['X-N8N-API-KEY'] = cleanKey;
+      headers['Authorization'] = `Bearer ${cleanKey}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(`${cleanHost}/api/v1/workflows`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const isAuthError = response.status === 401 || response.status === 403;
+        
+        let userMessage = `n8n returned HTTP ${response.status}: ${errorText.slice(0, 300)}`;
+        if (isAuthError) {
+          userMessage = `n8n returned HTTP 401: Unauthorized. The n8n REST API requires an API Key. In your n8n workspace, go to Settings (gear icon in sidebar) → n8n API → Create API Key, then paste it here. Or switch to Tab 2 to upload your workflow .json file without an API key.`;
+        }
+
+        return res.status(response.status).json({
+          success: false,
+          status: response.status,
+          isAuthError,
+          rawError: errorText,
+          error: userMessage,
+        });
+      }
+
+      const data = await response.json();
+      return res.json({
+        success: true,
+        host: cleanHost,
+        count: Array.isArray(data.data) ? data.data.length : 0,
+        workflows: Array.isArray(data.data) ? data.data.map((w: any) => ({
+          id: w.id,
+          name: w.name,
+          active: w.active,
+          createdAt: w.createdAt,
+          updatedAt: w.updatedAt,
+          nodesCount: w.nodes ? w.nodes.length : 0,
+        })) : [],
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timeout);
+      return res.status(502).json({
+        success: false,
+        error: `Could not reach n8n instance at ${cleanHost}. If running on localhost, use localtunnel/ngrok or upload your workflow JSON file directly in Tab 2. Details: ${fetchErr?.message || 'Network error'}`,
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Server error' });
+  }
+});
+
+// API: Fetch specific workflow by ID from user's n8n instance
+app.post('/api/n8n/get-workflow', async (req, res) => {
+  try {
+    const { host, apiKey, workflowId } = req.body;
+    if (!host || !workflowId) {
+      return res.status(400).json({ error: 'Host and workflowId are required' });
+    }
+
+    const cleanHost = host.trim().replace(/\/+$/, '');
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    if (apiKey && apiKey.trim()) {
+      const cleanKey = apiKey.trim().replace(/^Bearer\s+/i, '');
+      headers['X-N8N-API-KEY'] = cleanKey;
+      headers['Authorization'] = `Bearer ${cleanKey}`;
+    }
+
+    const response = await fetch(`${cleanHost}/api/v1/workflows/${encodeURIComponent(workflowId)}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        success: false,
+        error: `Failed to fetch workflow ${workflowId} (HTTP ${response.status}): ${errorText.slice(0, 300)}`,
+      });
+    }
+
+    const workflowData = await response.json();
+    return res.json({
+      success: true,
+      workflow: workflowData.data || workflowData,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Failed to fetch workflow' });
+  }
+});
+
 // API: Proxy call to external live n8n webhook (bypassing CORS)
 app.post('/api/n8n/trigger', async (req, res) => {
   try {
@@ -478,10 +593,12 @@ app.post('/api/n8n/trigger', async (req, res) => {
     return res.json({
       status: response.status,
       ok: response.ok,
+      success: response.ok,
       data: responseData
     });
   } catch (err: any) {
     return res.status(502).json({
+      success: false,
       error: err?.message || 'Failed to reach n8n webhook',
       name: err?.name
     });
