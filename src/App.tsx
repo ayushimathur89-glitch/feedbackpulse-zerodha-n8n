@@ -17,6 +17,7 @@ import { WeeklyPulseSection } from './components/WeeklyPulseSection';
 import { FeeExplainerSection } from './components/FeeExplainerSection';
 import { N8nExportSection } from './components/N8nExportSection';
 import { DeliverablesGuideModal } from './components/DeliverablesGuideModal';
+import { GitHubExportModal } from './components/GitHubExportModal';
 
 import { 
   ReviewItem, 
@@ -45,6 +46,7 @@ export default function App() {
 
   // Modals
   const [isDeliverablesOpen, setIsDeliverablesOpen] = useState(false);
+  const [isGithubOpen, setIsGithubOpen] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Step 1: Run Review Intelligence
@@ -162,6 +164,7 @@ export default function App() {
       {/* Top Navigation */}
       <Header
         onOpenDeliverables={() => setIsDeliverablesOpen(true)}
+        onOpenGithubExport={() => setIsGithubOpen(true)}
         onDownloadCsv={handleDownloadCsv}
         reviewCount={reviews.length}
       />
@@ -280,6 +283,12 @@ export default function App() {
         latestDoc={null}
         latestEmail={null}
         onDownloadCsv={handleDownloadCsv}
+      />
+
+      {/* GitHub Export & Submission Modal */}
+      <GitHubExportModal
+        isOpen={isGithubOpen}
+        onClose={() => setIsGithubOpen(false)}
       />
 
       {/* Footer */}

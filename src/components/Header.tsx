@@ -1,14 +1,16 @@
 import React from 'react';
-import { Sparkles, Download, HelpCircle, Cpu, ArrowRight, Workflow } from 'lucide-react';
+import { Sparkles, Download, HelpCircle, Cpu, ArrowRight, Workflow, Github } from 'lucide-react';
 
 interface HeaderProps {
   onOpenDeliverables: () => void;
+  onOpenGithubExport: () => void;
   onDownloadCsv: () => void;
   reviewCount: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenDeliverables,
+  onOpenGithubExport,
   onDownloadCsv,
   reviewCount
 }) => {
@@ -54,11 +56,20 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
+            onClick={onOpenGithubExport}
+            title="Push to GitHub or download full repository ZIP"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-indigo-500/50 transition shadow-sm"
+          >
+            <Github className="w-3.5 h-3.5 text-indigo-400" />
+            <span>GitHub / Export</span>
+          </button>
+
+          <button
             onClick={onOpenDeliverables}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-md shadow-indigo-600/25 transition"
           >
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>Submission & Deliverables</span>
+            <span>Deliverables Guide</span>
           </button>
         </div>
       </div>

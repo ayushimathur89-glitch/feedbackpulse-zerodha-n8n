@@ -1,6 +1,8 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 
@@ -601,6 +603,149 @@ app.post('/api/n8n/trigger', async (req, res) => {
       success: false,
       error: err?.message || 'Failed to reach n8n webhook',
       name: err?.name
+    });
+  }
+});
+
+// API: Export complete project repository as a clean downloadable ZIP file
+app.get('/api/export/zip', (_req, res) => {
+  try {
+    const zipPath = path.resolve('/tmp', 'feedbackpulse-zerodha-repo.zip');
+    // Run python3 zip builder to package the repository clean
+    const pyScript = `
+import zipfile, os
+root_dir = os.path.abspath(".")
+zip_path = "/tmp/feedbackpulse-zerodha-repo.zip"
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(root_dir):
+        # Exclude node_modules, dist, temp files, .aistudio
+        if 'node_modules' in dirs: dirs.remove('node_modules')
+        if 'dist' in dirs: dirs.remove('dist')
+        if '.aistudio' in dirs: dirs.remove('.aistudio')
+        for f in files:
+            if f.endswith('.zip') or f.endswith('.tar.gz') or f.endswith('.log'): continue
+            p = os.path.join(root, f)
+            arcname = os.path.relpath(p, root_dir)
+            zf.write(p, arcname)
+`;
+    fs.writeFileSync('/tmp/make_zip.py', pyScript);
+    execSync('python3 /tmp/make_zip.py', { cwd: process.cwd() });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="feedbackpulse-zerodha-repo.zip"');
+    return res.sendFile(zipPath);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to generate zip: ' + (err?.message || 'Unknown error') });
+  }
+});
+
+// API: Create GitHub repository and push all files automatically
+app.post('/api/github/push', async (req, res) => {
+  try {
+    const { token, repoName, isPrivate = false } = req.body;
+    if (!token || !repoName) {
+      return res.status(400).json({ error: 'GitHub Personal Access Token and repository name are required.' });
+    }
+
+    const cleanRepoName = repoName.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+
+    // 1. Get authenticated user info from GitHub API
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `Bearer ${token.trim()}`,
+        'User-Agent': 'FeedbackPulse-App',
+        'Accept': 'application/vnd.github+json',
+      },
+    });
+
+    if (!userRes.ok) {
+      const errText = await userRes.text();
+      return res.status(userRes.status).json({
+        error: `GitHub Authentication Error (${userRes.status}): Make sure your token has 'repo' scope. Details: ${errText.slice(0, 250)}`,
+      });
+    }
+
+    const userData = await userRes.json();
+    const githubUsername = userData.login;
+
+    // Check if repoName specifies owner (e.g. org/repo or user/repo)
+    let targetOwner = githubUsername;
+    let actualRepoName = cleanRepoName;
+    if (cleanRepoName.includes('/')) {
+      const parts = cleanRepoName.split('/');
+      targetOwner = parts[0];
+      actualRepoName = parts[1];
+    }
+
+    // 2. Create the repository on GitHub if it doesn't already exist
+    const createRepoUrl = targetOwner.toLowerCase() === githubUsername.toLowerCase()
+      ? 'https://api.github.com/user/repos'
+      : `https://api.github.com/orgs/${targetOwner}/repos`;
+
+    try {
+      const createRes = await fetch(createRepoUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token.trim()}`,
+          'User-Agent': 'FeedbackPulse-App',
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: actualRepoName,
+          description: 'FeedbackPulse AI — Zerodha Kite Review Intelligence & n8n Workflow Automation',
+          private: Boolean(isPrivate),
+          auto_init: false,
+        }),
+      });
+
+      if (!createRes.ok && createRes.status !== 422) {
+        const warnText = await createRes.text();
+        console.warn('GitHub create repo warning:', createRes.status, warnText);
+      }
+    } catch (e: any) {
+      console.warn('Error during create repo attempt:', e?.message);
+    }
+
+    // 3. Configure git committer & push all files
+    execSync(`git config user.name "${userData.name || githubUsername}"`, { cwd: process.cwd() });
+    execSync(`git config user.email "${userData.email || `${githubUsername}@users.noreply.github.com`}"`, { cwd: process.cwd() });
+
+    // Stage and commit any unstaged files
+    try {
+      execSync('git add -A && git commit -m "feat: complete Zerodha review analysis with n8n workflow integration"', { cwd: process.cwd() });
+    } catch {
+      // already committed
+    }
+
+    // Ensure branch is main
+    try {
+      execSync('git branch -M main', { cwd: process.cwd() });
+    } catch {}
+
+    // Add or replace remote with authenticated token
+    const authenticatedRemoteUrl = `https://x-access-token:${token.trim()}@github.com/${targetOwner}/${actualRepoName}.git`;
+    try {
+      execSync('git remote remove github-origin', { cwd: process.cwd() });
+    } catch {}
+    execSync(`git remote add github-origin "${authenticatedRemoteUrl}"`, { cwd: process.cwd() });
+
+    // Push to GitHub repository
+    execSync('git push -u github-origin main --force', { cwd: process.cwd() });
+
+    const finalRepoUrl = `https://github.com/${targetOwner}/${actualRepoName}`;
+
+    return res.json({
+      success: true,
+      repoUrl: finalRepoUrl,
+      username: githubUsername,
+      repoName: actualRepoName,
+      message: `All project files and git commits have been pushed to ${finalRepoUrl}!`,
+    });
+  } catch (err: any) {
+    console.error('GitHub push error:', err);
+    return res.status(500).json({
+      error: `GitHub sync failed: ${err?.message || 'Error occurred during git push'}`
     });
   }
 });
